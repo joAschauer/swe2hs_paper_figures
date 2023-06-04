@@ -1,9 +1,13 @@
 from pathlib import Path
+import calendar
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+import seaborn as sns
+from sklearn.metrics import r2_score
+
 import pandas as pd
 import numpy as np
 
@@ -49,6 +53,10 @@ DATA_AUTOMATIC_VALID = (pd
 m = {k: v for k, v in vars(jopack._default_model_parameters).items() if not k.startswith('_')}
 MODEL_PARAMS = {k.lower(): v for k, v in m.items() if not k=='R'}
 MODEL_PARAMS['R'] = m['R']
+
+
+def _get_month_abbr(month_int):
+    return calendar.month_abbr[month_int]
 
 
 def predict_with_params(swe_data, params, return_layers, hs_output_unit='m'):
@@ -107,6 +115,7 @@ def layer_plots_6_example_years(
     
     station_lookup = pd.read_csv(DATA_DIR / 'coordinates_swe2hs_paper_stations.csv')
     
+    # plain readable text names for stations in AWS dataset.
     station_descr = {
         'CDP_aws': ['Col de Porte', 1325],
         'DAV_aws': ['Davos', 1563],
@@ -341,3 +350,331 @@ def figure_A02(filepath):
     return None
 
 
+def scatterplot_true_pred(
+    ax, 
+    true,
+    pred,
+    style='scatter',
+    fitline=True,
+    fitline_kwargs=None,
+    identity_line=True,
+    identity_line_kwargs=None,
+    **plot_kwargs
+):
+    """
+    Scatterplot for modeled vs. measured values.
+
+    Parameters
+    ----------
+    ax : mpl.axes.Axes
+        Axes which is filled by the function.
+    true : array, pd.Series or list like
+        true values (will be plotted on x-axis).
+    pred : array, pd.Series or list like
+        predicted values (will be plotted on y-axis).
+
+    Returns
+    -------
+    ax : mpl.axes.Axes
+
+    """
+    plot_kwargs.setdefault('s', 1)
+    plot_kwargs.setdefault('marker', 'o')
+    plot_kwargs.setdefault('facecolor', 'k')
+    plot_kwargs.setdefault('lw', 0)
+    
+    data = pd.DataFrame({'true': true, 'pred':pred}, index=true.index)
+    data = data.dropna()
+    
+    true = data['true']
+    pred = data['pred']
+    gmin = min([true.min(), pred.min()])
+    gmax = max([true.max(), pred.max()])
+    
+    if style=='scatter':
+        sns.scatterplot(
+            x=true,
+            y=pred,
+            ax=ax,
+            **plot_kwargs,
+            )
+    elif style=='density':
+        data = data.reset_index(drop=True)
+        sns.histplot(
+            data=data,
+            x='true',
+            y='pred',
+            binwidth=(gmax-gmin)/100,
+            thresh=0,
+            pmax=0.3,
+            cmap='RdPu',
+            ax=ax,
+            )
+    
+    if identity_line:
+        i_line_kwargs = {
+            'linestyle': '-', 
+            'color': 'k', 
+            'lw': 0.8
+        }
+        if identity_line_kwargs is not None:
+            i_line_kwargs.update(identity_line_kwargs)
+        # 1/1 line limits, extended by 1%
+        gmin -= 0.01*gmin
+        gmax += 0.01*gmax
+        # draw 1/1 line
+        ax.axline([gmin, gmin], [gmax, gmax], **i_line_kwargs)
+
+    xmin, xmax = ax.get_xlim()
+    ymin, ymax = ax.get_ylim()
+    ax.set_ylim((min(xmin,ymin),max(xmax,ymax)))
+    ax.set_xlim((min(xmin,ymin),max(xmax,ymax)))
+    ax.set_aspect('equal')
+    ax.set_xlabel(r"measured")
+    ax.set_ylabel(r"modeled")
+
+    if fitline:
+        line_kwargs = {
+                'linestyle': '--',
+                'color': 'k',
+                'lw':0.8,
+            }
+        if fitline_kwargs is not None:
+            line_kwargs.update(fitline_kwargs)
+        # linear fit to the scatterplot:
+        # obtain m (slope) and b(intercept) of linear regression line
+        m2, b2 = np.polyfit(true, pred, 1)
+        # new x-vector
+        x_fitline = np.linspace(true.min(), true.max())
+        #add linear regression line to scatterplot 
+        ax.plot(
+            x_fitline,
+            m2*x_fitline+b2,
+            **line_kwargs)
+    return ax
+
+
+def plot_density_inset_scatter(ax, data, params):
+    result = predict_with_params(
+        data['SWE_[m]'],
+        params,
+        return_layers=False
+    )
+    # main plot
+    scatterplot_true_pred(
+        ax, 
+        data['HS_[m]']*100, 
+        result*100,
+        style='scatter',
+        hue=None,
+        fitline_kwargs={'color': 'r', 'lw': 1.5}
+    )
+    # inset density plot
+    axins = ax.inset_axes([0.55, 0.02, 0.43, 0.43], transform=ax.transAxes)
+    scatterplot_true_pred(axins, data['HS_[m]']*100, result*100, style='density',
+                          fitline=False, identity_line_kwargs={'lw': 0.5})
+    axins.set(xlabel=None, ylabel=None, xticklabels=[], yticklabels=[])
+    ax.set_xlabel(r"HS reference [cm]")
+    ax.set_ylabel(r"HS model [cm]")
+    return ax, axins
+
+
+def figure_04(filepath):
+    """
+    Layout of figure:
+    ax0  ax1
+    ax2  ax3
+    """
+    print(f"- creating figure_04 and saving to\n  {filepath}")
+    fig, ((ax0, ax1), (ax2, ax3)) = plt.subplots(2, 2, figsize=[8, 8])
+
+    ax0, axins0 = plot_density_inset_scatter(ax0, DATA_MANUAL_CALIB, MODEL_PARAMS)
+    ax1.set_axis_off()
+    ax2, axins2 = plot_density_inset_scatter(ax2, DATA_MANUAL_VALID, MODEL_PARAMS)
+    ax3, axins3 = plot_density_inset_scatter(ax3, DATA_AUTOMATIC_VALID, MODEL_PARAMS)
+
+    ax3.set(ylabel=None, yticklabels=[])
+    ax0.set(xlabel=None, xticklabels=[])
+    ax0.text(0.05, 0.95, '(a)', fontsize='x-large',
+             ha='left', va='top', transform=ax0.transAxes)
+    ax2.text(0.05, 0.95, '(b)', fontsize='x-large',
+             ha='left', va='top', transform=ax2.transAxes)
+    ax3.text(0.05, 0.95, '(c)', fontsize='x-large',
+             ha='left', va='top', transform=ax3.transAxes)
+
+    axs = [ax0, axins0, ax2, axins2, ax3, axins3]
+    gmin = min([min([ax.get_ylim()[0] for ax in axs]),
+               min([ax.get_xlim()[0] for ax in axs])])
+    gmax = max([max([ax.get_ylim()[1] for ax in axs]),
+               max([ax.get_xlim()[1] for ax in axs])])
+    ticks = list(range(0, 800, 100))
+    for ax in axs:
+        ax.set_ylim((gmin, gmax))
+        ax.set_xlim((gmin, gmax))
+        ax.set_xticks(ticks)
+        ax.set_yticks(ticks)
+        ax.tick_params(bottom=True, left=True, right=True,
+                       top=True, direction='in')
+        ax.set_aspect('equal')
+
+    plt.tight_layout()
+    fig.savefig(filepath, dpi=300,
+                bbox_inches='tight', pad_inches=0.05)
+    fig.clf()
+    plt.close()
+    return None
+
+
+def monthly_comparison_boxplot(ax, true, pred, start_month=9, plot_kwargs=None):
+    assert start_month in range(1,13)
+    # reshape data to long format:
+    true = pd.DataFrame({
+        'values': true.values, 
+        'source': 'reference', 
+        'Month': true.index.month.map(_get_month_abbr)}, 
+        index=true.index)
+    pred = pd.DataFrame({
+        'values': pred.values, 
+        'source': 'model', 
+        'Month': pred.index.month.map(_get_month_abbr)}, 
+        index=pred.index)
+    # arrange data in long format
+    df = pd.concat([true, pred], axis=0)
+    
+    pkwargs = {
+        'palette': 'Set2',
+    }
+    if plot_kwargs is not None:
+        pkwargs.update(plot_kwargs)
+    sns.boxplot(
+        x='Month',
+        y='values',
+        hue='source',
+        data=df,
+        ax=ax,
+        **pkwargs
+    )
+    return ax
+
+
+def calculate_swe2hs_on_data_and_plot_boxes(
+    ax,
+    data,
+    params,
+):
+    result = predict_with_params(
+        data['SWE_[m]'],
+        params,
+        return_layers=False
+    )
+    kwargs = {
+        'palette': ['lightblue', 'dodgerblue'],
+        'order': [_get_month_abbr(i) for i in [10, 11, 12, 1, 2, 3, 4, 5, 6]],
+        'linewidth': 1.0,
+        'fliersize': 1.0,
+        'flierprops': {'marker': '.'}
+    }
+
+    df = pd.DataFrame({'ref': data['HS_[m]'], 'mod': result})
+    df = df.loc[~df.index.month.isin([7, 8, 9]), :]
+
+    ax = monthly_comparison_boxplot(
+        ax, df['ref']*100, df['mod']*100, plot_kwargs=kwargs)
+    return ax
+
+
+def dropzero_r2(true, predicted):
+    any_nan = np.isnan(true) | np.isnan(predicted)
+    both_zero = (true == 0) & (predicted == 0)
+    to_drop = any_nan | both_zero
+    if np.all(to_drop):
+        result = np.nan
+    else:
+        result = r2_score(true[~to_drop], predicted[~to_drop])
+    return result
+
+def calculate_and_plot_errors(ax, data, params):
+    result = predict_with_params(
+        data['SWE_[m]'],
+        params,
+        return_layers=False
+    )
+
+    df = pd.DataFrame({'ref': data['HS_[m]'], 'mod': result})
+    df = df.loc[~df.index.month.isin([7, 8, 9]), :]
+
+    monthly_error = (df.groupby(df.index.month).apply(lambda x: dropzero_r2(x['ref'].to_numpy(), x['mod'].to_numpy()))
+                        .rename('r2')
+                        .to_frame()
+                        .assign(r2=lambda x: x['r2'].where(~x.index.isin([7, 8, 9]), np.nan))
+                        .assign(month=lambda x: x.index.map(_get_month_abbr))
+                        )
+
+    ax = sns.pointplot(
+        data=monthly_error,
+        x='month',
+        y='r2',
+        order=[_get_month_abbr(i) for i in [10, 11, 12, 1, 2, 3, 4, 5, 6]],
+        linestyles=':',
+        ax=ax
+    )
+    return ax
+
+
+def figure_05(filepath):
+    print(f"- creating figure_05 and saving to\n  {filepath}")
+    fig, ((ax00, ax01, ax02), (ax10, ax11, ax12)) = plt.subplots(
+        2, 3, figsize=[8, 5.5], gridspec_kw={'height_ratios': [2.5, 1]})
+    
+    ax00 = calculate_swe2hs_on_data_and_plot_boxes(ax00, DATA_MANUAL_CALIB, MODEL_PARAMS)
+    ax01 = calculate_swe2hs_on_data_and_plot_boxes(ax01, DATA_MANUAL_VALID, MODEL_PARAMS)  # ax01
+    ax02 = calculate_swe2hs_on_data_and_plot_boxes(ax02, DATA_AUTOMATIC_VALID, MODEL_PARAMS)
+    ax10 = calculate_and_plot_errors(ax10, DATA_MANUAL_CALIB, MODEL_PARAMS)  # ax10
+    ax11 = calculate_and_plot_errors(ax11, DATA_MANUAL_VALID, MODEL_PARAMS)  # ax11
+    ax12 = calculate_and_plot_errors(ax12, DATA_AUTOMATIC_VALID, MODEL_PARAMS)
+
+    for ax in [ax01, ax11, ax02, ax12]:
+        ax.set(ylabel=None, yticklabels=[])
+    ax00.text(0.05, 0.95, '(a)', fontsize='x-large',
+              ha='left', va='top', transform=ax00.transAxes)
+    ax01.text(0.05, 0.95, '(b)', fontsize='x-large',
+              ha='left', va='top', transform=ax01.transAxes)
+    ax02.text(0.05, 0.95, '(c)', fontsize='x-large',
+              ha='left', va='top', transform=ax02.transAxes)
+    ax00.set_ylabel('HS [cm]')
+    ax10.set_ylabel('$R^2$', usetex=True)
+    axs = [ax00, ax01, ax02]
+    ymin = min([ax.get_ylim()[0] for ax in axs])
+    ymax = max([ax.get_ylim()[1] for ax in axs])
+    for ax in axs:
+        ax.set_ylim((ymin, ymax))
+        ax.tick_params(bottom=True, left=True, right=True,
+                       top=True, direction='in')
+        ax.set(xlabel=None, xticklabels=[])
+
+    axs = [ax10, ax11, ax12]
+    ymin = min([ax.get_ylim()[0] for ax in axs])
+    ymax = max([ax.get_ylim()[1] for ax in axs])
+    for ax in axs:
+        ax.set_ylim((ymin, 1))
+        ax.tick_params(bottom=True, left=True, right=True, top=True,
+                       direction='in', labelsize=9)
+        ax.set_xlabel('Month')
+
+    # legend
+    ax00.get_legend().remove()
+    ax01.get_legend().remove()
+    handles, labels = ax02.get_legend_handles_labels()
+    ax02.legend(
+        handles,
+        ['Reference', 'Model'],
+        frameon=False,
+        loc='upper right',
+    )
+
+    plt.tight_layout()
+    fig.savefig(filepath, dpi=300,
+                bbox_inches='tight', pad_inches=0.05)
+    fig.clf()
+    plt.close()
+    return None
