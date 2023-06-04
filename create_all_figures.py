@@ -12,6 +12,7 @@ from calibration_and_validation_figures import (
     figure_A02,
     figure_04,
     figure_05,
+    figure_06,
 )
 
 FIGURE_DIR = Path(__file__).parent.resolve() / "created_figures"
@@ -24,3 +25,4 @@ if __name__ == "__main__":
     figure_A02(FIGURE_DIR / "figure_A02.png")
     figure_04(FIGURE_DIR / "figure_04.png")
     figure_05(FIGURE_DIR / "figure_05.png")
+    figure_06(FIGURE_DIR / "figure_06.png")

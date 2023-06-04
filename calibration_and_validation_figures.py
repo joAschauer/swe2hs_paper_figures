@@ -55,6 +55,37 @@ MODEL_PARAMS = {k.lower(): v for k, v in m.items() if not k=='R'}
 MODEL_PARAMS['R'] = m['R']
 
 
+def _nonzero_scorer(scorefunc):
+    """
+    Only calculate score where at least one of y_true or y_pred is nonzero.
+    
+    Can be used to decorate a scoring function which accepts two arguments
+    y_true and y_predicted.
+    """
+    def _removed_zero_score(*args):
+        data = pd.DataFrame({'y_true': args[0],
+                             'y_pred': args[1]}
+                            )
+        data = data.loc[data.any(axis=1)]
+        y_true = data['y_true'].to_numpy()
+        y_pred = data['y_pred'].to_numpy()
+        return scorefunc(y_true, y_pred)
+    return _removed_zero_score
+
+
+@_nonzero_scorer
+def _bias_score(y_true, y_hat):
+    
+    assert(len(y_true) == len(y_hat))
+    error = y_hat-y_true
+    return np.average(error)
+
+
+@_nonzero_scorer
+def _r2_nonzero(y_true, y_pred):
+    return r2_score(y_true, y_pred)
+
+
 def _get_month_abbr(month_int):
     return calendar.month_abbr[month_int]
 
@@ -672,6 +703,103 @@ def figure_05(filepath):
         loc='upper right',
     )
 
+    plt.tight_layout()
+    fig.savefig(filepath, dpi=300,
+                bbox_inches='tight', pad_inches=0.05)
+    fig.clf()
+    plt.close()
+    return None
+
+
+def predict_and_score(data, params):
+    result = predict_with_params(
+        data['SWE_[m]'],
+        params,
+        return_layers=False
+    )
+
+    data = pd.DataFrame(
+        {'true': data['HS_[m]'], 'pred': result}, index=data.index).dropna()
+
+    true = data['true']*100
+    pred = data['pred']*100
+    r2 = _r2_nonzero(true, pred)
+    bias = _bias_score(true, pred)
+
+    scores = {
+        "r2": r2,
+        "bias": bias,
+    }
+    return scores
+
+
+def predict_and_score_per_station(data, params):
+    scores = []
+    for stn, df in data.groupby('site_id'):
+        scores.append(pd.DataFrame(predict_and_score(df, params), index=[stn]))
+    return pd.concat(scores, axis=0)
+
+
+def figure_06(filepath):
+    print(f"- creating figure_06 and saving to\n  {filepath}")
+    latex_labels = {
+        'r2': '$R^2$',
+        'bias': 'BIAS',
+    }
+    aws = (predict_and_score_per_station(DATA_AUTOMATIC_VALID, MODEL_PARAMS)
+           .assign(dataset=lambda x: "Automatic stations")
+           .assign(dummy=lambda x: 1)  # used for y location of the bars
+           )
+    manu_calib = (predict_and_score_per_station(DATA_MANUAL_CALIB, MODEL_PARAMS)
+          .assign(dataset=lambda x: "Manual stations calibration data")
+          .assign(dummy=lambda x: 1)
+          )
+    manu_valid = (predict_and_score_per_station(DATA_MANUAL_VALID, MODEL_PARAMS)
+                .assign(dataset=lambda x: "Manual stations validation data")
+                .assign(dummy=lambda x: 1)
+                )
+    df = pd.concat([manu_calib, manu_valid, aws], axis=0)
+    fig, axs = plt.subplots(2, 1, figsize=[5, 3.3])
+    for score, ax in zip(['r2', 'bias'], axs):
+        if score == 'r2':
+            usetex = True
+        else:
+            usetex = False
+        sns.boxplot(
+            data=df,
+            x=score,
+            y='dummy',
+            hue='dataset',
+            orient='h',
+            ax=ax,
+            palette=['lightblue', 'lightcyan', 'dodgerblue'],
+            showfliers=False)
+        sns.stripplot(
+            data=df,
+            x=score,
+            y="dummy",
+            hue='dataset',
+            orient='h',
+            dodge=True,
+            size=4,
+            color=".3",
+            linewidth=0,
+            ax=ax)
+
+        ax.tick_params(bottom=True, left=False, right=False,
+                       top=True, direction='in')
+        ax.set_yticklabels([])
+        ax.set_ylabel(None)
+        ax.set_xlabel(latex_labels[score], usetex=usetex)
+        ax.get_legend().remove()
+
+    handles, labels = axs[0].get_legend_handles_labels()
+    axs[0].legend(
+        handles[:3],
+        labels[:3],
+        frameon=False,
+        loc='upper left',
+    )
     plt.tight_layout()
     fig.savefig(filepath, dpi=300,
                 bbox_inches='tight', pad_inches=0.05)
