@@ -15,7 +15,7 @@ import swe2hs as jopack
 from swe2hs.visualization import layer_plot, groupby_hydroyear
 
 
-DATA_DIR = Path(__file__).parent.resolve() / '.data_cache'
+DATA_DIR = Path(__file__).parent.resolve() / "data" / ".model_input_data_cache"
 
 def drop_allzero_swe_chunks(df):
     """
