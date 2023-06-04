@@ -135,7 +135,7 @@ def make_plot(hs_swe2hs, hs_simple, hs_top, swe):
 
 
 def main(filepath):
-    print(f"creating figure_01 and saving to\n {filepath}")
+    print(f"- creating figure_01 and saving to\n  {filepath}")
     swe = create_synthetic_swe()
     hs_swe2hs, hs_simple, hs_top = calculate_models(swe)
     fig = make_plot(hs_swe2hs, hs_simple, hs_top, swe)
