@@ -4,10 +4,10 @@ The code in this repository can be used to reproduce the figures (except of the 
 
 Aschauer, J., Michel, A., Jonas, T., & Marty, C. (2023). An empirical model to calculate snow depth from daily snow water equivalent: SWE2HS 1.0. Geoscientific Model Development.
 
-To recreate the figures, clone the repository and install the requirements from `requirements.txt` by running
+To recreate the figures, clone the repository, navigate to the cloned folder and install the requirements from `requirements.txt` by running
 
 ```
-pip install reqirements.txt
+pip install -r reqirements.txt
 ```
 
 Additionally, a working latex installation is required because some labels in the figures are rendered by latex.
