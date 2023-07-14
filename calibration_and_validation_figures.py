@@ -333,7 +333,9 @@ def figure_03(filepath):
         ],
     )
     fig.savefig(filepath, dpi=300,
-                bbox_inches='tight', pad_inches=0.05)
+                bbox_inches='tight', 
+                # pad_inches=0.05,
+                )
     fig.clf()
     plt.close()
     return None
@@ -354,7 +356,9 @@ def figure_A01(filepath):
         ],
     )
     fig.savefig(filepath, dpi=300,
-                bbox_inches='tight', pad_inches=0.05)
+                bbox_inches='tight', 
+                # pad_inches=0.05,
+                )
     fig.clf()
     plt.close()
     return None
@@ -375,7 +379,9 @@ def figure_A02(filepath):
         ],
     )
     fig.savefig(filepath, dpi=300,
-                bbox_inches='tight', pad_inches=0.05)
+                bbox_inches='tight', 
+                # pad_inches=0.05,
+                )
     fig.clf()
     plt.close()
     return None
@@ -744,7 +750,7 @@ def figure_06(filepath):
     print(f"- creating figure_06 and saving to\n  {filepath}")
     latex_labels = {
         'r2': '$R^2$',
-        'bias': 'BIAS',
+        'bias': 'bias',
     }
     aws = (predict_and_score_per_station(DATA_AUTOMATIC_VALID, MODEL_PARAMS)
            .assign(dataset=lambda x: "Automatic stations")

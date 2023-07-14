@@ -25,7 +25,7 @@ parameter_labels = {
 def nested_barplot(vars, Sis):
     var_labels = {
         'rmse': 'RMSE',
-        'bias': 'BIAS',
+        'bias': 'bias',
         'r2': '$R^2$'
     }
     # sort variables based on senistivity for first variable:
